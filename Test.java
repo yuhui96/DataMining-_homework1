@@ -15,7 +15,7 @@ public class Test {
 	}
 
 	public static void test(Scanner sc, List<Double> list) {
-		try(FileWriter out = new FileWriter("./test_res.txt")) {
+		try(FileWriter out = new FileWriter("./test_res.csv")) {
 			out.write("id,reference\n");
 			int id = 0;
 			while (sc.hasNextLine()) {

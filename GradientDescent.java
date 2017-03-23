@@ -12,6 +12,8 @@ public class GradientDescent {
 	private double[] referenceList = null;
 	private double[] cache = null;
 	private int colCount = 0;
+	private int multiThreadLevel = 3;
+	private CalThread[] calThreads;
 
 	public GradientDescent(Scanner sc, int count) {
 		colCount = count;
@@ -25,6 +27,15 @@ public class GradientDescent {
 
 		for (int i = 0; i < coefficients.length; i++)
 			coefficients[i] = 1;
+
+		calThreads = new CalThread[multiThreadLevel];
+		for (int i = 0; i < multiThreadLevel; i++) {
+			int start = i * coefficients.length / multiThreadLevel;
+			int end = (i + 1) * coefficients.length / multiThreadLevel;
+			calThreads[i] = new CalThread(start, end);
+			calThreads[i].setDaemon(true);
+			calThreads[i].start();
+		}
 	}
 
 	private double getNums(String s, int col) {
@@ -45,8 +56,13 @@ public class GradientDescent {
 	}
 
 	public void run(double factor, int count) {
-		for (int i = 0; i < count; i++)
-			oneRun(factor);
+		double res = oneRun(factor);
+		for (int i = 1; i < count; i++) {
+			double temp =  oneRun(factor);
+			if (temp > res)
+				factor /= 2;
+			res = temp; 
+		}
 	}
 
 	public void test(Scanner sc, int count) {
@@ -80,7 +96,49 @@ public class GradientDescent {
 		}
 	}
 
-	private void oneRun(double factor) {
+	class CalThread extends Thread {
+		int start, end;
+		double factor;
+		boolean startOneRun = false;
+		public CalThread(int start, int end) {
+			super();
+			this.start = start;
+			this.end = end;
+		}
+
+		public synchronized boolean getStartOneRun() {
+			return startOneRun;
+		}
+
+		public synchronized void startOneRun(double factor) {
+			startOneRun = true;
+			this.factor = factor;
+			notify();
+		}
+
+		public void run() {
+			try {
+				while (true) {
+					synchronized(this) {
+						while (!startOneRun)
+							wait();
+						double sum = 0;
+						for (int i = start; i < end; i++) {
+							for (int j = 0; j < cache.length; j++)
+								sum += cache[j] * numsList[j][i];
+							coefficients[i] -= factor*sum/colCount;
+						}
+						startOneRun = false;
+					}
+				}
+			} catch (Exception e) {
+				e.printStackTrace();
+			}
+		}
+	}
+
+	private double oneRun(double factor) {
+		double res = 0;
 		for (int i = 0; i < colCount; i++) {
 			double sum = 0;
 			for (int j = 0; j < 385; j++) {
@@ -88,14 +146,19 @@ public class GradientDescent {
 			}
 			sum -= referenceList[i];
 			cache[i] = sum;
+			res += Math.pow(cache[i], 2)/colCount;
 		}
 
-		for (int i = 0; i < coefficients.length; i++) {
-			double sum = 0;
-			for (int j = 0; j < colCount; j++)
-				sum += cache[j] * numsList[j][i];
-			coefficients[i] -= factor*sum/colCount;
+		for (int i = 0; i < multiThreadLevel; i++) {
+			calThreads[i].startOneRun(factor);
 		}
+
+		for (int i = 0; i < multiThreadLevel; i++) {
+			while (calThreads[i].getStartOneRun())
+				;
+		}
+
+		return Math.pow(res, 0.5);
 	}
 
 	public static void main(String[] args) {
@@ -106,14 +169,13 @@ public class GradientDescent {
 				sc.nextLine();
 			GradientDescent gd = new GradientDescent(sc, Integer.valueOf(args[0]));
 			Scanner terminal = new Scanner(System.in);
-			while (terminal.hasNextLine()) {
+			if (terminal.hasNextLine()) {
 				int times = terminal.nextInt();
-				if (times == -1)
-					break;
 				double factor = terminal.nextDouble();
 				gd.run(factor, times);
 				System.out.println("This run done!");
-				gd.test(sc, Integer.valueOf(args[1]));
+				if (args.length > 1)
+					gd.test(sc, Integer.valueOf(args[1]));
 			}
 			terminal.close();
 			gd.writeRes();
